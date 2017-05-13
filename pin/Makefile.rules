@@ -1,0 +1,26 @@
+# For reference on available options see:
+#    - pin/source/tools/Config/makefile.rules.tmpl
+#    - pin/source/tools/Config/makefile.config
+
+# Setup common Makefile variables.
+CXX      = g++
+ARFLAGS  = rcsv
+CP       = cp -f
+MKDIR    = mkdir -p
+_COMMA  := ,
+
+# Setup variables used by Pin Makefile Infrastructure.
+TOOL_ROOTS      := dummy
+TOOL_CXXFLAGS   += $(CPP11FLAGS)
+TOOL_LIBS       += $(CPP11LIBS)
+ARCHIVER        := $(AR) $(ARFLAGS)
+
+# Be more lenient with warnings.
+TOOL_CXXFLAGS   := $(filter-out -Werror,$(TOOL_CXXFLAGS))
+
+# Remove unsupported linker flag for Mac.
+ifeq ($(TARGET_OS),mac)
+TOOL_LIBS       := $(filter-out -Wl$(_COMMA)--no-as-needed,$(TOOL_LIBS))
+endif
+
+# vim: set noet ts=4 sts=4 sw=4 ai ft=make :

@@ -1,0 +1,4 @@
+*.o
+*.*.sw?
+obj-ia32
+obj-intel64
