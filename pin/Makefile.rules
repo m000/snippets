@@ -10,7 +10,7 @@ MKDIR    = mkdir -p
 _COMMA  := ,
 
 # Setup variables used by Pin Makefile Infrastructure.
-TOOL_ROOTS      := dummy
+TOOL_ROOTS      := dummy imgload
 TOOL_CXXFLAGS   += $(CPP11FLAGS)
 TOOL_LIBS       += $(CPP11LIBS)
 ARCHIVER        := $(AR) $(ARFLAGS)

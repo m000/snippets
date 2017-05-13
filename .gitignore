@@ -1,4 +1,6 @@
 *.o
+*.log
+*.out
 *.*.sw?
 obj-ia32
 obj-intel64
