@@ -11,10 +11,11 @@
 #if 0
 Demo for using reference wrapper keys in C++ maps in order to avoid redundant
 copying of keys.
-The first example on this subject (map_reference_wrapper.cpp) demonstrated
-how to use strings as keys for an unordered map without having them copied
-when items are inserted.
-In this example, we show
+In the first example on this subject (map_refwrap.cpp) the map and the inserted
+objects all lived in the scope of main. We expand this example to show how how
+objects can be inserted out of the scope of the map. The problem with this
+approach is that deallocation has to be handled manually. I.e., when an object
+is erased from the map, it will not be automatically deallocated.
 
 Compile:
     g++ -std=c++11 map_reference_wrapper2.cpp -o map_reference_wrapper2
@@ -30,6 +31,13 @@ class map_value_t {
     map_value_t(std::string s, uint32_t v): s(s), v(v) {
         std::cerr << "new:" << *this << std::endl;
     }
+#if 0
+    map_value_t(map_value_t&& other) {
+        s = std::move(other.s);
+        v = other.v;
+        std::cerr << "mov" << *this << std::endl;
+    }
+#endif
     ~map_value_t() {
         std::cerr << "end:" << *this << std::endl;
     }
@@ -51,13 +59,21 @@ std::ostream& operator<<(std::ostream &o, const std::string &s) {
     return o;
 }
 
-// Map. The value type is not a reference. This allows emplacing objects.
+#if defined(MAP_REFVAL)
+// Map. The value type is a reference.
 typedef std::unordered_map<std::reference_wrapper<std::string>,
                            map_value_t&,
                            std::hash<std::string>,
                            std::equal_to<std::string>>
     map_t;
-
+#else
+// Map. The value type is not a reference. This allows emplacing objects.
+typedef std::unordered_map<std::reference_wrapper<std::string>,
+                           map_value_t,
+                           std::hash<std::string>,
+                           std::equal_to<std::string>>
+    map_t;
+#endif
 
 
 // #### Testing code #################################################
@@ -79,14 +95,13 @@ const char *get_string() {
             std::cout << "\t[" << n << "] " << strings[n] << std::endl;
             n++;
         }
-        std::cout << std::endl << "Choice? " << std::flush;
+        std::cout << "Choice? " << std::flush;
         std::cin >> c;
     } while (std::cin && !(c >= 0 && c < n));
     return strings[c];
 }
 
 void map_dump(const map_t &m) {
-    std::cout << "---dump-----------------------" << std::endl;
     for (auto &m_it : m) {
         const std::string &mk = m_it.first;
         const map_value_t &mv = m_it.second;
@@ -96,105 +111,58 @@ void map_dump(const map_t &m) {
     }
 }
 
-#if 0
-const char *add_one_bad(map_t &m, uint32_t n) {
+const char *add_one(map_t &m, uint32_t n) {
     const char *k = get_string();
-    std::string *sp = new std::string(k);
- 
-    std::cout << *sp << std::endl;
-    m.emplace(std::piecewise_construct,
-            std::forward_as_tuple(std::ref(*sp)), 
-            std::forward_as_tuple(std::ref(*sp), n));
-
-    return k;
-}
-#endif
-
-const char *add_one_good(map_t &m, uint32_t n) {
-    const char *k = get_string();
+#if defined(MAP_REFVAL)
+    // this works, but allocated objects aren't automatically freed
     map_value_t *mv = new map_value_t(k, n);
-
     m.insert(std::make_pair(std::ref((*mv).s), std::ref(*mv)));
+#else
+    map_value_t mv(k, n);
+    //m.insert(std::make_pair(std::ref(mv.s), std::move(mv)));
+    //map_value_t mv(k, n);
+    m.emplace(std::piecewise_construct,
+            std::forward_as_tuple(std::ref(mv.s)), 
+            std::forward_as_tuple(std::move(mv)));
+#endif
     return k;
 }
 
 int main() {
     map_t m;
 
-    const char *k = add_one_good(m, 1);
-    std::string ks = std::string(k);
+#if defined(MAP_REFVAL)
+    std::cout << "---test insert----------------";
+    const char *ck1 = add_one(m, 1);
+    const char *ck2 = add_one(m, 2);
+    const char *ck3 = add_one(m, 2);
+
+    std::cout << "---dump-----------------------" << std::endl;
+    map_dump(m);
+    
+    std::cout << "---delete 1-------------------" << std::endl;
+    std::string k1(ck1);
+    auto m_it1 = m.find(k1);
+    assert(m_it1 != m.end());
+    std::cout << "obj" << m_it1->second << std::endl;
+    //delete &m_it1->second;  // we need delete to release obj
+    m.erase(m_it1);
+
+    std::cout << "---delete 2-------------------" << std::endl;
+    std::string k2(ck2);
+    auto m_it2 = m.find(k2);
+    assert(m_it2 != m.end());
+    std::cout << "obj" << m_it2->second << std::endl;
+    delete &m_it2->second;  // we need delete to release obj
+    m.erase(m_it2);
+
+    std::cout << "---dump-----------------------" << std::endl;
     map_dump(m);
 
-#if 0
-    auto m_it = m.find(ks);
-    assert(m_it != m.end());
-
-    std::cout << m_it->second << std::endl;
-    const char *cstr = m_it->second.s.c_str();
-
-    std::cout << "*" << cstr << std::endl;
-    m.erase(m_it);
-    std::cout << "+" << cstr << std::endl;
-#endif
-
-
-#if 0
-    s = get_string();
-    map_value_t mv1(s, 1);
-    s = get_string();
-    map_value_t mv2(s, 2);
-
-    //m.emplace(std::piecewise_construct,
-              //std::forward_as_tuple(foo),
-              //std::forward_as_tuple(foo, 4));
-
-
-    std::cout << "---forward--------------------" << std::endl;
-    m.insert(std::make_pair(std::ref(mv1.s), std::ref(mv1)));
-    m.insert(std::make_pair(std::ref(mv2.s), std::ref(mv2)));
-#endif
-
-#if 0
-        std::string *ss = new std::string(get_string());
-   
-    std::cout << (void *)ss << std::endl;
-    //map_value_t *mv3 = new map_value_t(ss, 3);
-    //m.insert(std::make_pair(std::ref((*mv3).s), std::ref(*mv3)));
-    m.emplace(std::piecewise_construct,
-            std::forward_as_tuple(std::ref(*ss)), 
-            std::forward_as_tuple(ss, 4));
-
- std::cout << "---dump-----------------------" << std::endl;
-    for (auto &m_it : m) {
-        const std::string &mk = m_it.first;
-        map_value_t &mv = m_it.second;
-        std::cout << mk << mv << std::endl <<
-            "\tkaddr:\t" << &mk << std::endl;
-    }
-
-    std::cout << "------------------------------" << std::endl;
-    std::unordered_map<std::string, int> m2;
-    std::string x("whistlings");
-    char *ll = strdup("whistlings");
-
-    std::string_view x2("xxx");
-
-    auto m2it = m2.find(ll);
-
-    auto foo_it = m.find(x);
-    std::cout << foo_it->second.v << std::endl;
-    std::cout << (void *)(& foo_it->second) << std::endl;
-
-    std::string y("death");
-    auto loo_it = m.find(std::ref(y));
-    std::cout << loo_it->second.v << std::endl;
-    std::cout << (void *)(& loo_it->second) << std::endl;
-
-
-    std::cout << "------------------------------" << std::endl;
-    get_string();
-#endif
     std::cout << "---auto cleanup---------------" << std::endl;
+#else
+
+#endif
 }
 
 // vim: et:ts=4:sts=4:sw=4:
