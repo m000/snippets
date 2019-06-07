@@ -28,7 +28,9 @@ class map_value_t {
     uint32_t v = 0;
     std::string s;
 
-    map_value_t(std::string s, uint32_t v): s(s), v(v) {
+    // Declaration forces the use of move semantics for string argument.
+    // However, we also need to use std::move for initialization.
+    map_value_t(std::string&& s, uint32_t v): s(std::move(s)), v(v) {
         std::cerr << "new:" << *this << std::endl;
     }
 #if 0
@@ -66,6 +68,26 @@ typedef std::unordered_map<std::reference_wrapper<std::string>,
                            std::hash<std::string>,
                            std::equal_to<std::string>>
     map_t;
+
+#if 0
+template <>
+size_t map_t::erase(const map_t::key_type& k) {
+    std::cout << "fd" << 69 << std::endl;
+    size_t x = (this)->erase(k);
+    std::cout << "fd" << x << std::endl;
+    return x;
+}
+#endif
+
+#if 0
+template <typename T>
+const T& Parameters::get(const std::string& key) {
+    // read the explanation at the bottom for the second argument!
+    //     return get_impl(key, static_cast<T*>(0) );
+    //     }
+//map_t::iterator map_t::erase(map_t::const_iterator pos) { return pos.begin(); }
+#endif
+
 #else
 // Map. The value type is not a reference. This allows emplacing objects.
 typedef std::unordered_map<std::reference_wrapper<std::string>,
@@ -111,22 +133,48 @@ void map_dump(const map_t &m) {
     }
 }
 
-const char *add_one(map_t &m, uint32_t n) {
-    const char *k = get_string();
 #if defined(MAP_REFVAL)
-    // this works, but allocated objects aren't automatically freed
+// this works, but allocated objects aren't automatically freed
+const char *add_one(map_t &m, uint32_t n) {
+start:
+    const char *k = get_string();
+
+#if 1
+    // When you need a string anyway, use semantics prevents
+    // unecessary duplication of the internal buffer.
+    std::string sk(k);
+    auto lookup_it = m.find(sk);
+    if (lookup_it != m.cend()) {
+        std::cout << sk << std::endl;
+        std::cout << "Try again. Choice " << '"' << k << '"' << " is duplicate." << std::endl;
+        goto start;  // this somehow works
+    } else {
+        map_value_t *mv = new map_value_t(std::move(sk), n);
+        std::cout << sk << std::endl;
+        m.insert(std::make_pair(std::ref((*mv).s), std::ref(*mv)));
+    }
+#else
+    // When you don't need the string, the c string can be 
+    // used directly.
     map_value_t *mv = new map_value_t(k, n);
     m.insert(std::make_pair(std::ref((*mv).s), std::ref(*mv)));
-#else
-    map_value_t mv(k, n);
-    //m.insert(std::make_pair(std::ref(mv.s), std::move(mv)));
-    //map_value_t mv(k, n);
-    m.emplace(std::piecewise_construct,
-            std::forward_as_tuple(std::ref(mv.s)), 
-            std::forward_as_tuple(std::move(mv)));
 #endif
+
     return k;
 }
+#else
+const char *add_one(map_t &m, uint32_t n) {
+    const char *k = get_string();
+    map_value_t mv(k, n);
+    //m.emplace(std::piecewise_construct,
+            //std::forward_as_tuple(std::ref(mv.s)), 
+            //std::forward_as_tuple(std::move(mv)));
+    //m.emplace(std::piecewise_construct,
+            //std::forward_as_tuple(std::ref(mv.s)), 
+            //std::forward_as_tuple(std::move(mv)));
+    return k;
+}
+#endif
 
 int main() {
     map_t m;
@@ -161,7 +209,14 @@ int main() {
 
     std::cout << "---auto cleanup---------------" << std::endl;
 #else
+    std::cout << "---test insert----------------";
+    const char *ck1 = add_one(m, 1);
+    const char *ck2 = add_one(m, 2);
 
+    std::cout << "---dump-----------------------" << std::endl;
+    map_dump(m);
+
+    std::cout << "---auto cleanup---------------" << std::endl;
 #endif
 }
 
